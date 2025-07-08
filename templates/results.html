@@ -109,14 +109,10 @@
                             </span>
                         </td>
                         <td>
-                            <span class="percentage {% if row.completed_rate >= 50 %}good{% else %}warning{% endif %}">
-                                {{ row.completed_rate }}%
-                            </span>
+                            {{ row.completed_rate }}%
                         </td>
                         <td>
-                            <span class="percentage good">
-                                {{ row.delivered_rate }}%
-                            </span>
+                            {{ row.delivered_rate }}%
                         </td>
                         <td>
                             <span class="percentage {% if row.refund_rate <= 5 %}good{% elif row.refund_rate <= 10 %}warning{% else %}danger{% endif %}">

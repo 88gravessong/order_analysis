@@ -86,4 +86,11 @@ instance/
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# PyInstaller打包文件
+dist/
+build/
+*.spec
+打包结果/
+*.exe 

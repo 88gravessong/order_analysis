@@ -67,12 +67,15 @@ def read_orders(file_path: Path):
     headers = list(header_row)
     col_indices = locate_columns(headers)
 
+    def _safe(row, idx):
+        return row[idx] if idx < len(row) else None
+
     # 从第3行开始遍历（第2行是描述行）
-    for row in ws.iter_rows(min_row=3, values_only=True):
-        seller_sku = row[col_indices["seller_sku"]]
-        substatus = row[col_indices["order_substatus"]]
-        cancel_type = row[col_indices["cancel_type"]]
-        shipped_time = row[col_indices["shipped_time"]]
+    for row in ws.iter_rows(min_row=3, values_only=True):  # type: ignore[attr-defined]
+        seller_sku = _safe(row, col_indices["seller_sku"])
+        substatus = _safe(row, col_indices["order_substatus"])
+        cancel_type = _safe(row, col_indices["cancel_type"])
+        shipped_time = _safe(row, col_indices["shipped_time"])
         yield seller_sku, substatus, cancel_type, shipped_time
 
     wb.close()

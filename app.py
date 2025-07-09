@@ -16,7 +16,7 @@ import uuid
 from tempfile import gettempdir
 import re
 
-from flask import Flask, render_template, request, send_file, flash, redirect, url_for, after_this_request
+from flask import Flask, render_template, request, send_file, flash, redirect, url_for, after_this_request  # type: ignore
 
 from compute_logic import compute_metrics
 

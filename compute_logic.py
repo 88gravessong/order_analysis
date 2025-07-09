@@ -13,12 +13,13 @@ compute_logic.py
 from collections import defaultdict
 from datetime import datetime, date
 from io import BytesIO
-from typing import Dict, List, Iterable, Union, IO, Any
+from typing import Dict, List, Iterable, Union, IO
 import os
 import re
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 # 列映射
 TARGET_COLUMNS = {
@@ -55,17 +56,18 @@ def _iter_rows(file_bytes: Union[str, "os.PathLike[str]", FileLike]):
     # openpyxl.load_workbook 既支持路径也支持类文件对象 (必须为二进制)。
     wb = load_workbook(file_bytes, data_only=True)  # type: ignore[arg-type]
 
-    # openpyxl 的类型存根并未完整声明 .active 的返回值接口，这里使用 Any 避免
-    ws: Any = wb.active  # type: ignore[assignment]
+    # 将 active 工作表标注为 Worksheet，便于类型检查
+    ws: Worksheet = wb.active  # type: ignore[assignment]
+
     header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
-    headers = list(header_row)
+    headers = [str(h) if h is not None else "" for h in header_row]
     cols = _locate_cols(headers)
 
     def _safe(row, idx):
         """当 idx 超出 row 长度时返回 None，避免 IndexError"""
         return row[idx] if idx < len(row) else None
 
-    for row in ws.iter_rows(min_row=3, values_only=True):  # type: ignore[attr-defined]
+    for row in ws.iter_rows(min_row=3, values_only=True):
         yield (
             _safe(row, cols["seller_sku"]),
             _safe(row, cols["order_substatus"]),
@@ -174,7 +176,7 @@ def compute_metrics(file_streams: Iterable[BytesIO], start_date: date, end_date:
                 s["in_transit"] += 1
 
     wb = Workbook()
-    ws = wb.active
+    ws: Worksheet = wb.active  # type: ignore[assignment]
     ws.title = "订单指标"
     headers = [
         "Seller SKU", "订单数", "签收率(%)", "已完成率(%)", "已送达率(%)", "退款率(%)", "发货前取消率(%)", "发货后取消率(%)", "仍在途率(%)",

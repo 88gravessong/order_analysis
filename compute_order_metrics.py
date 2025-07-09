@@ -20,10 +20,11 @@
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, Sequence
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 INPUT_FILE = "全部 订单-2025-07-08-21_50.xlsx"  # 如需处理其它文件，可修改此常量或传参
 OUTPUT_FILE = "订单指标分析结果.xlsx"
@@ -42,7 +43,7 @@ def normalise(text: str) -> str:
     return text.strip().lower() if isinstance(text, str) else ""
 
 
-def locate_columns(headers: List[str]) -> Dict[str, int]:
+def locate_columns(headers: Sequence[str]) -> Dict[str, int]:
     """根据标题行定位目标列索引 (0-based)"""
     header_map = {normalise(h): idx for idx, h in enumerate(headers) if h}
 
@@ -60,11 +61,11 @@ def locate_columns(headers: List[str]) -> Dict[str, int]:
 def read_orders(file_path: Path):
     """读取 Excel，返回迭代器 (sku_id, substatus, cancel_type, shipped_time)"""
     wb = load_workbook(file_path, data_only=True)
-    ws = wb.active  # 默认第一个工作表
+    ws: Worksheet = wb.active  # type: ignore[assignment]
 
     # 正确读取标题行（read_only 模式下无法通过 ws[1] 获取完整行）
     header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
-    headers = list(header_row)
+    headers = [str(h) if h is not None else "" for h in header_row]
     col_indices = locate_columns(headers)
 
     def _safe(row, idx):

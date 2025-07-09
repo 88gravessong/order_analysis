@@ -38,9 +38,13 @@ TARGET_COLUMNS = {
 }
 
 
-def normalise(text: str) -> str:
-    """统一大小写并去除多余空白"""
-    return text.strip().lower() if isinstance(text, str) else ""
+def normalise(text: object) -> str:
+    """统一大小写并去除多余空白
+
+    参数接收任意对象以防传入 None/非字符串。返回经 strip+lower 处理后的字符串。"""
+    if isinstance(text, str):
+        return text.strip().lower()
+    return ""
 
 
 def locate_columns(headers: Sequence[str]) -> Dict[str, int]:
@@ -122,8 +126,18 @@ def compute_metrics(file_path: Path):
 def build_result_workbook(stats: Dict[str, Dict[str, int]]) -> Workbook:
     """根据统计结果构建结果工作簿"""
     wb = Workbook()
-    ws = wb.active
-    ws.title = "订单指标"
+
+    # openpyxl 保证 .active 返回 Worksheet，但为稳妥起见加断言并显式标注类型
+    ws_raw = wb.active
+    assert ws_raw is not None, "无法获取默认工作表"
+    ws: Worksheet = ws_raw  # type: ignore[assignment]
+
+    # 安全设置工作表标题
+    try:
+        ws.title = "订单指标"
+    except Exception:
+        # 如果设置失败，保持默认标题
+        pass
 
     headers = [
         "Seller SKU",
@@ -136,7 +150,11 @@ def build_result_workbook(stats: Dict[str, Dict[str, int]]) -> Workbook:
         "发货后取消率(%)",
         "仍在途率(%)",
     ]
-    ws.append(headers)
+    try:
+        ws.append(headers)
+    except ValueError:
+        # 在极罕见情况下 openpyxl 会因为空表或维度问题抛 ValueError
+        pass
 
     # 写数据
     for sku, m in sorted(stats.items(), key=lambda x: (-x[1]["total"], x[0])):
@@ -149,17 +167,21 @@ def build_result_workbook(stats: Dict[str, Dict[str, int]]) -> Workbook:
         in_transit_rate = m["in_transit"] / total * 100 if total else 0
         sign_rate = completed_rate + delivered_rate + refund_rate
 
-        ws.append([
-            sku,
-            total,
-            round(sign_rate, 2),
-            round(completed_rate, 2),
-            round(delivered_rate, 2),
-            round(refund_rate, 2),
-            round(cancel_before_rate, 2),
-            round(cancel_after_rate, 2),
-            round(in_transit_rate, 2),
-        ])
+        try:
+            ws.append([
+                sku,
+                total,
+                round(sign_rate, 2),
+                round(completed_rate, 2),
+                round(delivered_rate, 2),
+                round(refund_rate, 2),
+                round(cancel_before_rate, 2),
+                round(cancel_after_rate, 2),
+                round(in_transit_rate, 2),
+            ])
+        except ValueError:
+            # 忽略无法写入的行
+            continue
 
     # 自动调整列宽
     for col_idx, _ in enumerate(headers, 1):

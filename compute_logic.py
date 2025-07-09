@@ -54,13 +54,17 @@ def _iter_rows(file_bytes: Union[str, bytes, BytesIO]):
     headers = list(header_row)
     cols = _locate_cols(headers)
 
+    def _safe(row, idx):
+        """当 idx 超出 row 长度时返回 None，避免 IndexError"""
+        return row[idx] if idx < len(row) else None
+
     for row in ws.iter_rows(min_row=3, values_only=True):  # 跳过描述行
         yield (
-            row[cols["seller_sku"]],
-            row[cols["order_substatus"]],
-            row[cols["cancel_type"]],
-            row[cols["shipped_time"]],
-            row[cols["created_time"]],
+            _safe(row, cols["seller_sku"]),
+            _safe(row, cols["order_substatus"]),
+            _safe(row, cols["cancel_type"]),
+            _safe(row, cols["shipped_time"]),
+            _safe(row, cols["created_time"]),
         )
     wb.close()
 
@@ -126,6 +130,13 @@ def compute_metrics(file_streams: Iterable[BytesIO], start_date: date, end_date:
     total_rows = 0
 
     for fs in file_streams:
+        # 确保指针位于文件开头，防止 BytesIO 被重复读取后位置不正确
+        if hasattr(fs, "seek"):
+            try:
+                fs.seek(0)
+            except Exception:
+                pass
+
         for seller_sku, sub, cancel, shipped, created in _iter_rows(fs):
             if seller_sku is None:
                 continue

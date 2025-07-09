@@ -14,6 +14,7 @@ from zipfile import ZipFile
 import os
 import uuid
 from tempfile import gettempdir
+import re
 
 from flask import Flask, render_template, request, send_file, flash, redirect, url_for, after_this_request
 
@@ -25,6 +26,7 @@ app.secret_key = "secret-key-change-me"
 
 @app.route("/")
 def index():
+    _cleanup_temp_files()
     return render_template("index.html")
 
 
@@ -133,6 +135,24 @@ def download(filename):
                     as_attachment=True, 
                     download_name=f"订单指标分析结果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+# ---------------- 辅助函数 -----------------
+
+def _cleanup_temp_files(expire_seconds: int = 24 * 3600):
+    """删除超过指定秒数的历史临时结果文件，避免磁盘堆积"""
+    now = datetime.now().timestamp()
+    temp_dir = gettempdir()
+    pattern = re.compile(r"^order_metrics_[0-9a-f]{8}\.xlsx$")
+    for fname in os.listdir(temp_dir):
+        if not pattern.match(fname):
+            continue
+        fpath = os.path.join(temp_dir, fname)
+        try:
+            if now - os.path.getmtime(fpath) > expire_seconds:
+                os.remove(fpath)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

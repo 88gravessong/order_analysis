@@ -141,18 +141,23 @@ def compute_metrics(file_streams: Iterable[BytesIO], start_date: date, end_date:
             cancel_lower = _norm(cancel)
             shipped_empty = shipped is None or str(shipped).strip() == ""
 
-            if sub_lower == "已完成" and cancel_lower == "":
+            completed_set = {"已完成", "completed"}
+            delivered_set = {"已送达", "delivered"}
+            canceled_set = {"已取消", "canceled"}
+            in_transit_set = {"运输中", "in transit"}
+
+            if sub_lower in completed_set and cancel_lower == "":
                 s["completed"] += 1
-            elif sub_lower == "已送达":
+            elif sub_lower in delivered_set:
                 s["delivered"] += 1
             elif "return" in sub_lower or "refund" in sub_lower:
                 s["refund"] += 1
-            elif sub_lower == "已取消":
+            elif sub_lower in canceled_set:
                 if shipped_empty:
                     s["cancel_before"] += 1
                 else:
                     s["cancel_after"] += 1
-            elif sub_lower == "运输中":
+            elif sub_lower in in_transit_set:
                 s["in_transit"] += 1
 
     wb = Workbook()

@@ -150,16 +150,16 @@
                     <div class="col-md-6">
                         <ul class="list-unstyled">
                             <li><strong>签收率</strong> = 已完成率 + 已送达率 + 退款率</li>
-                            <li><strong>已完成率</strong> = 已完成且无取消/退货的订单比例</li>
-                            <li><strong>已送达率</strong> = 订单状态为"已送达"的比例</li>
+                            <li><strong>已完成率</strong> = 状态为"已完成"(`Completed`)且无取消/退货的订单比例</li>
+                            <li><strong>已送达率</strong> = 状态为"已送达"(`Delivered`)的比例</li>
                             <li><strong>退款率</strong> = 订单状态包含"Return/Refund"的比例</li>
                         </ul>
                     </div>
                     <div class="col-md-6">
                         <ul class="list-unstyled">
-                            <li><strong>发货前取消率</strong> = 已取消且未发货的订单比例</li>
-                            <li><strong>发货后取消率</strong> = 已取消但已发货的订单比例</li>
-                            <li><strong>仍在途率</strong> = 订单状态为"运输中"的比例</li>
+                            <li><strong>发货前取消率</strong> = 状态为"已取消"(`Canceled`)且未发货的订单比例</li>
+                            <li><strong>发货后取消率</strong> = 状态为"已取消"(`Canceled`)但已发货的订单比例</li>
+                            <li><strong>仍在途率</strong> = 状态为"运输中"(`In transit`)的比例</li>
                         </ul>
                     </div>
                 </div>

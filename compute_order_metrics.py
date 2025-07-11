@@ -5,12 +5,12 @@
 ------------------------------------------------
 指标定义：
 1. 订单数               = 该 SKU 的所有订单数
-2. 已完成率(%)          = Order Substatus == "已完成" 且 Cancelation/Return Type 为空 的订单数   / 订单数 * 100
-3. 已送达率(%)          = Order Substatus == "已送达"                                   / 订单数 * 100
+2. 已完成率(%)          = Order Substatus 为 "已完成" 或 "Completed" 且 Cancelation/Return Type 为空 的订单数   / 订单数 * 100
+3. 已送达率(%)          = Order Substatus 为 "已送达" 或 "Delivered"                                   / 订单数 * 100
 4. 退款率(%)            = Order Substatus 含 "Return"/"Refund"                          / 订单数 * 100
-5. 发货前取消率(%)      = Order Substatus == "已取消" 且 Shipped Time 为空              / 订单数 * 100
-6. 发货后取消率(%)      = Order Substatus == "已取消" 且 Shipped Time 不为空            / 订单数 * 100
-7. 仍在途率(%)          = Order Substatus == "运输中"                                   / 订单数 * 100
+5. 发货前取消率(%)      = Order Substatus 为 "已取消" 或 "Canceled" 且 Shipped Time 为空              / 订单数 * 100
+6. 发货后取消率(%)      = Order Substatus 为 "已取消" 或 "Canceled" 且 Shipped Time 不为空            / 订单数 * 100
+7. 仍在途率(%)          = Order Substatus 为 "运输中" 或 "In transit"                                   / 订单数 * 100
 8. 签收率(%)            = 已完成率 + 已送达率 + 退款率
 
 注意：
@@ -95,18 +95,23 @@ def compute_metrics(file_path: Path):
         cancel = normalise(cancel)
         shipped_empty = shipped is None or str(shipped).strip() == ""
 
-        if sub == "已完成" and cancel == "":
+        completed_set = {"已完成", "completed"}
+        delivered_set = {"已送达", "delivered"}
+        canceled_set = {"已取消", "canceled"}
+        in_transit_set = {"运输中", "in transit"}
+
+        if sub in completed_set and cancel == "":
             s["completed"] += 1
-        elif sub == "已送达":
+        elif sub in delivered_set:
             s["delivered"] += 1
         elif "return" in sub or "refund" in sub:
             s["refund"] += 1
-        elif sub == "已取消":
+        elif sub in canceled_set:
             if shipped_empty:
                 s["cancel_before"] += 1
             else:
                 s["cancel_after"] += 1
-        elif sub == "运输中":
+        elif sub in in_transit_set:
             s["in_transit"] += 1
 
         # 其它状态直接忽略

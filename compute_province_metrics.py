@@ -21,8 +21,11 @@
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Iterable
 
+from datetime import date
+from io import BytesIO
+from compute_logic import _norm as normalise_logic, _date_in_range, _to_date
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
 
@@ -60,7 +63,7 @@ def locate_columns(headers: List[str]) -> Dict[str, int]:
 
 
 def read_orders(file_path: Path):
-    """读取 Excel，返回迭代器 (sku_id, province, substatus, cancel_type, shipped_time)"""
+    """读取 Excel，返回迭代器 (sku_id, province, substatus, cancel_type, shipped_time, created_time)"""
     wb = load_workbook(file_path, data_only=True)
     ws = wb.active  # 默认第一个工作表
 
@@ -76,9 +79,27 @@ def read_orders(file_path: Path):
         substatus = row[col_indices["order_substatus"]]
         cancel_type = row[col_indices["cancel_type"]]
         shipped_time = row[col_indices["shipped_time"]]
-        yield seller_sku, province, substatus, cancel_type, shipped_time
+        created_time = row[col_indices["created_time"]]
+        yield seller_sku, province, substatus, cancel_type, shipped_time, created_time
 
     wb.close()
+
+def _iter_rows_stream(file_bytes: BytesIO):
+    wb = load_workbook(file_bytes, data_only=True)
+    ws = wb.active
+    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+    headers = list(header_row)
+    cols = locate_columns(headers)
+    for row in ws.iter_rows(min_row=3, values_only=True):
+        seller_sku = row[cols["seller_sku"]]
+        province = row[cols["province"]]
+        substatus = row[cols["order_substatus"]]
+        cancel_type = row[cols["cancel_type"]]
+        shipped_time = row[cols["shipped_time"]]
+        created_time = row[cols["created_time"]]
+        yield seller_sku, province, substatus, cancel_type, shipped_time, created_time
+    wb.close()
+
 
 
 def compute_metrics(file_path: Path):
@@ -128,6 +149,41 @@ def compute_metrics(file_path: Path):
     return stats, sku_totals
 
 
+def compute_metrics_streams(file_streams: Iterable[BytesIO], start_date: date, end_date: date):
+    stats: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    sku_totals: Dict[str, int] = defaultdict(int)
+    for fs in file_streams:
+        for seller_sku, province, sub, cancel, shipped, created in _iter_rows_stream(fs):
+            if seller_sku is None:
+                continue
+            if not _date_in_range(created, start_date, end_date):
+                continue
+            sku_id = str(seller_sku)
+            prov = str(province).strip() if province is not None else ""
+            sku_totals[sku_id] += 1
+            s = stats[sku_id][prov]
+            s["total"] += 1
+            sub = normalise_logic(sub)
+            cancel = normalise_logic(cancel)
+            shipped_empty = shipped is None or str(shipped).strip() == ""
+            completed_set = {"已完成", "completed"}
+            delivered_set = {"已送达", "delivered"}
+            canceled_set = {"已取消", "canceled"}
+            in_transit_set = {"运输中", "in transit"}
+            if sub in completed_set and cancel == "":
+                s["completed"] += 1
+            elif sub in delivered_set:
+                s["delivered"] += 1
+            elif "return" in sub or "refund" in sub:
+                s["refund"] += 1
+            elif sub in canceled_set:
+                if shipped_empty:
+                    s["cancel_before"] += 1
+                else:
+                    s["cancel_after"] += 1
+            elif sub in in_transit_set:
+                s["in_transit"] += 1
+    return stats, sku_totals
 def build_result_workbook(
     stats: Dict[str, Dict[str, Dict[str, int]]], sku_totals: Dict[str, int]
 ) -> Workbook:
@@ -205,3 +261,5 @@ def main():
 
 if __name__ == "__main__":
     main() 
+
+

@@ -7,6 +7,7 @@
 - 📊 **多文件上传**：支持同时上传多个Excel订单文件
 - 📅 **日期筛选**：可按日期范围筛选订单数据
 - 📈 **指标计算**：自动计算签收率、完成率、退款率等关键指标
+- 🗺️ **省份分析**：统计各省份的SKU签收率和订单占比
 - 📄 **结果导出**：生成Excel格式的分析报告
 - 🎨 **友好界面**：简洁美观的Web界面
 
@@ -91,6 +92,7 @@ python app.py
 order_analysis/
 ├── app.py                    # Flask主应用
 ├── compute_logic.py          # 核心计算逻辑
+├── compute_province_metrics.py # 按省份统计SKU指标
 ├── requirements.txt          # Python依赖
 ├── start.bat                 # Windows启动脚本
 ├── start.sh                  # Linux/Mac启动脚本

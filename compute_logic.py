@@ -12,12 +12,15 @@ compute_logic.py
 
 from collections import defaultdict
 from datetime import datetime, date
-from io import BytesIO
+from io import BytesIO, TextIOWrapper
 from typing import Dict, List, Iterable, Union
 import re
+import csv
+from zipfile import BadZipFile
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.exceptions import InvalidFileException
 
 # 列映射
 TARGET_COLUMNS = {
@@ -47,22 +50,46 @@ def _locate_cols(headers: List[str]):
 
 
 def _iter_rows(file_bytes: Union[str, bytes, BytesIO]):
-    """遍历文件行，yield (seller_sku, substatus, cancel_type, shipped_time, created_time)"""
-    wb = load_workbook(file_bytes, data_only=True)
-    ws = wb.active
-    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
-    headers = list(header_row)
-    cols = _locate_cols(headers)
+    """遍历文件行，兼容 .xlsx 与 .csv"""
+    if isinstance(file_bytes, str):
+        with open(file_bytes, "rb") as f:
+            data = BytesIO(f.read())
+    elif isinstance(file_bytes, bytes):
+        data = BytesIO(file_bytes)
+    else:
+        data = file_bytes
+        data.seek(0)
 
-    for row in ws.iter_rows(min_row=3, values_only=True):  # 跳过描述行
-        yield (
-            row[cols["seller_sku"]],
-            row[cols["order_substatus"]],
-            row[cols["cancel_type"]],
-            row[cols["shipped_time"]],
-            row[cols["created_time"]],
-        )
-    wb.close()
+    try:
+        wb = load_workbook(data, data_only=True)
+        ws = wb.active
+        header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+        headers = list(header_row)
+        cols = _locate_cols(headers)
+        for row in ws.iter_rows(min_row=3, values_only=True):  # 跳过描述行
+            yield (
+                row[cols["seller_sku"]],
+                row[cols["order_substatus"]],
+                row[cols["cancel_type"]],
+                row[cols["shipped_time"]],
+                row[cols["created_time"]],
+            )
+        wb.close()
+    except (InvalidFileException, BadZipFile):
+        data.seek(0)
+        wrapper = TextIOWrapper(data, encoding="utf-8-sig")
+        reader = csv.reader(wrapper)
+        headers = next(reader)
+        cols = _locate_cols(headers)
+        next(reader, None)  # 跳过描述行
+        for row in reader:
+            yield (
+                row[cols["seller_sku"]] if cols["seller_sku"] < len(row) else None,
+                row[cols["order_substatus"]] if cols["order_substatus"] < len(row) else None,
+                row[cols["cancel_type"]] if cols["cancel_type"] < len(row) else None,
+                row[cols["shipped_time"]] if cols["shipped_time"] < len(row) else None,
+                row[cols["created_time"]] if cols["created_time"] < len(row) else None,
+            )
 
 
 def _to_date(val) -> Union[date, None]:
@@ -141,18 +168,23 @@ def compute_metrics(file_streams: Iterable[BytesIO], start_date: date, end_date:
             cancel_lower = _norm(cancel)
             shipped_empty = shipped is None or str(shipped).strip() == ""
 
-            if sub_lower == "已完成" and cancel_lower == "":
+            completed_set = {"已完成", "completed"}
+            delivered_set = {"已送达", "delivered"}
+            canceled_set = {"已取消", "canceled"}
+            in_transit_set = {"运输中", "in transit"}
+
+            if sub_lower in completed_set and cancel_lower == "":
                 s["completed"] += 1
-            elif sub_lower == "已送达":
+            elif sub_lower in delivered_set:
                 s["delivered"] += 1
             elif "return" in sub_lower or "refund" in sub_lower:
                 s["refund"] += 1
-            elif sub_lower == "已取消":
+            elif sub_lower in canceled_set:
                 if shipped_empty:
                     s["cancel_before"] += 1
                 else:
                     s["cancel_after"] += 1
-            elif sub_lower == "运输中":
+            elif sub_lower in in_transit_set:
                 s["in_transit"] += 1
 
     wb = Workbook()

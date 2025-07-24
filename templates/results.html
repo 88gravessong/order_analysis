@@ -45,7 +45,7 @@
         <div class="col-md-3">
             <div class="card stats-card">
                 <div class="card-body text-center">
-                    <h3 class="mb-1">{{ results|length }}</h3>
+                    <h3 class="mb-1">{{ sku_count }}</h3>
                     <p class="mb-0">SKU 数量</p>
                 </div>
             </div>
@@ -138,6 +138,51 @@
             </table>
         </div>
     </div>
+{% if province_results %}
+<div class="card mt-5">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0">省份指标数据</h5>
+    </div>
+    <div class="table-container">
+        <table class="table table-striped table-hover mb-0">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>序号</th>
+                    <th>Seller SKU</th>
+                    <th>省份</th>
+                    <th>订单数</th>
+                    <th>订单占比 (%)</th>
+                    <th>签收率 (%)</th>
+                    <th>已完成率 (%)</th>
+                    <th>已送达率 (%)</th>
+                    <th>退款率 (%)</th>
+                    <th>发货前取消率 (%)</th>
+                    <th>发货后取消率 (%)</th>
+                    <th>仍在途率 (%)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in province_results %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td class="fw-bold">{{ row.seller_sku }}</td>
+                    <td>{{ row.province }}</td>
+                    <td>{{ row.total }}</td>
+                    <td>{{ row.share_rate }}</td>
+                    <td>{{ row.sign_rate }}</td>
+                    <td>{{ row.completed_rate }}</td>
+                    <td>{{ row.delivered_rate }}</td>
+                    <td>{{ row.refund_rate }}</td>
+                    <td>{{ row.cancel_before_rate }}</td>
+                    <td>{{ row.cancel_after_rate }}</td>
+                    <td>{{ row.in_transit_rate }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 
     <!-- 说明信息 -->
     <div class="mt-4">
@@ -150,16 +195,16 @@
                     <div class="col-md-6">
                         <ul class="list-unstyled">
                             <li><strong>签收率</strong> = 已完成率 + 已送达率 + 退款率</li>
-                            <li><strong>已完成率</strong> = 已完成且无取消/退货的订单比例</li>
-                            <li><strong>已送达率</strong> = 订单状态为"已送达"的比例</li>
+                            <li><strong>已完成率</strong> = 状态为"已完成"(`Completed`)且无取消/退货的订单比例</li>
+                            <li><strong>已送达率</strong> = 状态为"已送达"(`Delivered`)的比例</li>
                             <li><strong>退款率</strong> = 订单状态包含"Return/Refund"的比例</li>
                         </ul>
                     </div>
                     <div class="col-md-6">
                         <ul class="list-unstyled">
-                            <li><strong>发货前取消率</strong> = 已取消且未发货的订单比例</li>
-                            <li><strong>发货后取消率</strong> = 已取消但已发货的订单比例</li>
-                            <li><strong>仍在途率</strong> = 订单状态为"运输中"的比例</li>
+                            <li><strong>发货前取消率</strong> = 状态为"已取消"(`Canceled`)且未发货的订单比例</li>
+                            <li><strong>发货后取消率</strong> = 状态为"已取消"(`Canceled`)但已发货的订单比例</li>
+                            <li><strong>仍在途率</strong> = 状态为"运输中"(`In transit`)的比例</li>
                         </ul>
                     </div>
                 </div>

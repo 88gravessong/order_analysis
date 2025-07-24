@@ -15,29 +15,49 @@ import os
 import uuid
 from tempfile import gettempdir
 
-from flask import Flask, render_template, request, send_file, flash, redirect, url_for, after_this_request
+from flask import (
+    Flask,
+    render_template,
+    request,
+    send_file,
+    flash,
+    redirect,
+    url_for,
+    after_this_request,
+    session,
+)
+from werkzeug.utils import secure_filename
 
 from compute_logic import compute_metrics
 
+from compute_province_metrics import compute_metrics_streams, build_result_workbook as build_province_workbook
 app = Flask(__name__)
 app.secret_key = "secret-key-change-me"
 
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    saved_files = session.get("uploaded_files", [])
+    return render_template("index.html", saved_files=saved_files)
 
 
 @app.route("/process", methods=["POST"])
 def process():
-    if "files" not in request.files:
-        flash("请至少上传一个文件！")
-        return redirect(url_for("index"))
+    files = request.files.getlist("files") if "files" in request.files else []
 
-    files = request.files.getlist("files")
-    if not files or files[0].filename == "":
-        flash("未选择文件！")
-        return redirect(url_for("index"))
+    if files and files[0].filename != "":
+        saved = []
+        for f in files:
+            filename = secure_filename(f.filename)
+            tmp_path = os.path.join(gettempdir(), f"{uuid.uuid4().hex}_{filename}")
+            f.save(tmp_path)
+            saved.append({"name": filename, "path": tmp_path})
+        session["uploaded_files"] = saved
+    else:
+        saved = session.get("uploaded_files")
+        if not saved:
+            flash("请至少上传一个文件！")
+            return redirect(url_for("index"))
 
     # 日期解析
     try:
@@ -53,11 +73,7 @@ def process():
         flash("开始日期不能晚于结束日期！")
         return redirect(url_for("index"))
 
-    # 读取文件到 BytesIO 列表
-    file_streams = []
-    for f in files:
-        data = BytesIO(f.read())
-        file_streams.append(data)
+    file_streams = [BytesIO(open(item["path"], "rb").read()) for item in saved]
 
     try:
         wb, stats = compute_metrics(file_streams, start_date, end_date)
@@ -101,13 +117,100 @@ def process():
     
     return render_template("results.html", 
                          results=results_data,
+                         sku_count=len(results_data),
                          start_date=start_date,
                          end_date=end_date,
                          temp_filename=temp_filename,
-                         total_files=len(files),
+                         total_files=len(saved),
                          total_orders=sum(r['total'] for r in results_data))
 
 
+@app.route("/process_province", methods=["POST"])
+def process_province():
+    files = request.files.getlist("files") if "files" in request.files else []
+    if files and files[0].filename != "":
+        saved = []
+        for f in files:
+            filename = secure_filename(f.filename)
+            tmp_path = os.path.join(gettempdir(), f"{uuid.uuid4().hex}_{filename}")
+            f.save(tmp_path)
+            saved.append({"name": filename, "path": tmp_path})
+        session["uploaded_files"] = saved
+    else:
+        saved = session.get("uploaded_files")
+        if not saved:
+            flash("请至少上传一个文件！")
+            return redirect(url_for("index"))
+
+    try:
+        start_str = request.form.get("start_date")
+        end_str = request.form.get("end_date")
+        start_date = datetime.strptime(start_str, "%Y-%m-%d").date() if start_str else date.min
+        end_date = datetime.strptime(end_str, "%Y-%m-%d").date() if end_str else date.max
+    except ValueError:
+        flash("日期格式错误，应为 YYYY-MM-DD")
+        return redirect(url_for("index"))
+
+    if start_date > end_date:
+        flash("开始日期不能晚于结束日期！")
+        return redirect(url_for("index"))
+
+    file_streams = [BytesIO(open(item["path"], "rb").read()) for item in saved]
+
+    try:
+        stats, sku_totals = compute_metrics_streams(file_streams, start_date, end_date)
+        if not stats:
+            flash("在所选日期范围内未找到符合条件的数据，请调整日期或检查文件！")
+            return redirect(url_for("index"))
+        wb = build_province_workbook(stats, sku_totals)
+    except Exception as e:
+        flash(f"处理文件时发生错误: {e}")
+        return redirect(url_for("index"))
+
+    temp_filename = f"province_metrics_{uuid.uuid4().hex[:8]}.xlsx"
+    temp_path = os.path.join(gettempdir(), temp_filename)
+    wb.save(temp_path)
+
+    province_results = []
+    for sku, prov_map in sorted(stats.items(), key=lambda x: x[0]):
+        total_sku = sku_totals.get(sku, 0)
+        for prov, m in sorted(prov_map.items(), key=lambda x: (-x[1]["total"], x[0])):
+            total = m["total"]
+            completed_rate = m.get("completed", 0) / total * 100 if total else 0
+            delivered_rate = m.get("delivered", 0) / total * 100 if total else 0
+            refund_rate = m.get("refund", 0) / total * 100 if total else 0
+            cancel_before_rate = m.get("cancel_before", 0) / total * 100 if total else 0
+            cancel_after_rate = m.get("cancel_after", 0) / total * 100 if total else 0
+            in_transit_rate = m.get("in_transit", 0) / total * 100 if total else 0
+            sign_rate = completed_rate + delivered_rate + refund_rate
+            share_rate = total / total_sku * 100 if total_sku else 0
+            province_results.append({
+                'seller_sku': sku,
+                'province': prov,
+                'total': total,
+                'share_rate': round(share_rate, 2),
+                'sign_rate': round(sign_rate, 2),
+                'completed_rate': round(completed_rate, 2),
+                'delivered_rate': round(delivered_rate, 2),
+                'refund_rate': round(refund_rate, 2),
+                'cancel_before_rate': round(cancel_before_rate, 2),
+                'cancel_after_rate': round(cancel_after_rate, 2),
+                'in_transit_rate': round(in_transit_rate, 2),
+            })
+
+    total_orders = sum(r['total'] for r in province_results)
+    sku_count = len(stats)
+    return render_template(
+        "results.html",
+        province_results=province_results,
+        results=[],
+        sku_count=sku_count,
+        start_date=start_date,
+        end_date=end_date,
+        temp_filename=temp_filename,
+        total_files=len(saved),
+        total_orders=total_orders,
+    )
 @app.route("/download/<filename>")
 def download(filename):
     """下载临时生成的结果文件"""

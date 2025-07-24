@@ -12,9 +12,10 @@ compute_logic.py
 
 from collections import defaultdict
 from datetime import datetime, date
-from io import BytesIO
+from io import BytesIO, StringIO
 from typing import Dict, List, Iterable, Union
 import re
+import csv
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
@@ -47,22 +48,50 @@ def _locate_cols(headers: List[str]):
 
 
 def _iter_rows(file_bytes: Union[str, bytes, BytesIO]):
-    """遍历文件行，yield (seller_sku, substatus, cancel_type, shipped_time, created_time)"""
-    wb = load_workbook(file_bytes, data_only=True)
-    ws = wb.active
-    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
-    headers = list(header_row)
-    cols = _locate_cols(headers)
+    """遍历文件行，兼容 Excel 和 CSV"""
+    if isinstance(file_bytes, (str, bytes)):
+        stream = BytesIO(file_bytes if isinstance(file_bytes, bytes) else open(file_bytes, 'rb').read())
+    else:
+        stream = file_bytes
 
-    for row in ws.iter_rows(min_row=3, values_only=True):  # 跳过描述行
-        yield (
-            row[cols["seller_sku"]],
-            row[cols["order_substatus"]],
-            row[cols["cancel_type"]],
-            row[cols["shipped_time"]],
-            row[cols["created_time"]],
-        )
-    wb.close()
+    peek = stream.read(4)
+    stream.seek(0)
+
+    if peek.startswith(b"PK\x03\x04"):
+        wb = load_workbook(stream, data_only=True)
+        ws = wb.active
+        header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+        headers = list(header_row)
+        cols = _locate_cols(headers)
+        for row in ws.iter_rows(min_row=3, values_only=True):  # 跳过描述行
+            yield (
+                row[cols["seller_sku"]],
+                row[cols["order_substatus"]],
+                row[cols["cancel_type"]],
+                row[cols["shipped_time"]],
+                row[cols["created_time"]],
+            )
+        wb.close()
+    else:
+        try:
+            text = stream.read().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            stream.seek(0)
+            text = stream.read().decode("gbk", errors="ignore")
+        reader = csv.reader(StringIO(text))
+        headers = next(reader, [])
+        cols = _locate_cols(headers)
+        next(reader, None)  # 描述行
+        for row in reader:
+            if not row:
+                continue
+            yield (
+                row[cols["seller_sku"]] if cols["seller_sku"] < len(row) else None,
+                row[cols["order_substatus"]] if cols["order_substatus"] < len(row) else None,
+                row[cols["cancel_type"]] if cols["cancel_type"] < len(row) else None,
+                row[cols["shipped_time"]] if cols["shipped_time"] < len(row) else None,
+                row[cols["created_time"]] if cols["created_time"] < len(row) else None,
+            )
 
 
 def _to_date(val) -> Union[date, None]:
@@ -141,18 +170,23 @@ def compute_metrics(file_streams: Iterable[BytesIO], start_date: date, end_date:
             cancel_lower = _norm(cancel)
             shipped_empty = shipped is None or str(shipped).strip() == ""
 
-            if sub_lower == "已完成" and cancel_lower == "":
+            completed_set = {"已完成", "completed"}
+            delivered_set = {"已送达", "delivered"}
+            canceled_set = {"已取消", "canceled"}
+            in_transit_set = {"运输中", "in transit"}
+
+            if sub_lower in completed_set and cancel_lower == "":
                 s["completed"] += 1
-            elif sub_lower == "已送达":
+            elif sub_lower in delivered_set:
                 s["delivered"] += 1
             elif "return" in sub_lower or "refund" in sub_lower:
                 s["refund"] += 1
-            elif sub_lower == "已取消":
+            elif sub_lower in canceled_set:
                 if shipped_empty:
                     s["cancel_before"] += 1
                 else:
                     s["cancel_after"] += 1
-            elif sub_lower == "运输中":
+            elif sub_lower in in_transit_set:
                 s["in_transit"] += 1
 
     wb = Workbook()

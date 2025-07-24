@@ -104,9 +104,13 @@
 
                 <!-- 提交按钮 -->
                 <div class="text-center">
-                    <button type="submit" class="btn btn-primary btn-lg px-4" id="submitBtn" disabled>
-                        <span class="spinner-border spinner-border-sm me-2" role="status" style="display: none;" id="loadingSpinner"></span>
-                        🚀 开始计算指标
+                    <button type="submit" formaction="/process" class="btn btn-primary btn-lg px-4 me-2 submit-btn" id="skuBtn" disabled>
+                        <span class="spinner-border spinner-border-sm me-2" style="display: none;"></span>
+                        <span class="label">🚀 开始计算指标</span>
+                    </button>
+                    <button type="submit" formaction="/process_province" class="btn btn-secondary btn-lg px-4 submit-btn" id="provinceBtn" disabled>
+                        <span class="spinner-border spinner-border-sm me-2" style="display: none;"></span>
+                        <span class="label">🗺️ 省份分析</span>
                     </button>
                 </div>
             </form>
@@ -116,16 +120,19 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    const serverFiles = {{ saved_files | tojson | safe }};
     let selectedFiles = [];
     
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const fileList = document.getElementById('fileList');
-    const fileListContainer = document.getElementById('fileListContainer');
-    const submitBtn = document.getElementById('submitBtn');
-    const uploadForm = document.getElementById('uploadForm');
-    const loadingSpinner = document.getElementById('loadingSpinner');
-
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const fileList = document.getElementById("fileList");
+    const fileListContainer = document.getElementById("fileListContainer");
+    const skuBtn = document.getElementById("skuBtn");
+    const provinceBtn = document.getElementById("provinceBtn");
+    const uploadForm = document.getElementById("uploadForm");
+    let activeBtn = null;
+    skuBtn.addEventListener("click", () => { activeBtn = skuBtn; });
+    provinceBtn.addEventListener("click", () => { activeBtn = provinceBtn; });
     // 点击拖拽区域打开文件选择
     dropZone.addEventListener('click', () => {
         fileInput.click();
@@ -170,13 +177,26 @@
 
     // 更新文件列表显示
     function updateFileList() {
-        if (selectedFiles.length === 0) {
+        const total = serverFiles.length + selectedFiles.length;
+        if (total === 0) {
             fileListContainer.style.display = 'none';
             return;
         }
 
         fileListContainer.style.display = 'block';
         fileList.innerHTML = '';
+
+        serverFiles.forEach(file => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+                <div>
+                    <i class="text-success">📄</i>
+                    <span class="ms-2">${file.name}</span>
+                    <small class="text-muted ms-2">(已上传)</small>
+                </div>`;
+            fileList.appendChild(fileItem);
+        });
 
         selectedFiles.forEach((file, index) => {
             const fileItem = document.createElement('div');
@@ -207,19 +227,22 @@
 
     // 更新提交按钮状态
     function updateSubmitButton() {
-        submitBtn.disabled = selectedFiles.length === 0;
-        
-        // 更新 input 文件列表以便表单提交
+        const disabled = selectedFiles.length === 0 && serverFiles.length === 0;
+        skuBtn.disabled = disabled;
+        provinceBtn.disabled = disabled;
         const dt = new DataTransfer();
         selectedFiles.forEach(file => dt.items.add(file));
         fileInput.files = dt.files;
     }
 
-    // 表单提交时显示加载状态
-    uploadForm.addEventListener('submit', () => {
-        submitBtn.disabled = true;
-        loadingSpinner.style.display = 'inline-block';
-        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>处理中...';
+    uploadForm.addEventListener("submit", () => {
+        skuBtn.disabled = true;
+        provinceBtn.disabled = true;
+        if (activeBtn) {
+            const spinner = activeBtn.querySelector(".spinner-border");
+            spinner.style.display = "inline-block";
+            activeBtn.querySelector(".label").textContent = "处理中...";
+        }
     });
 
     // 设置默认日期（最近30天）
@@ -228,6 +251,10 @@
     
     document.getElementById('end_date').value = today.toISOString().split('T')[0];
     document.getElementById('start_date').value = thirtyDaysAgo.toISOString().split('T')[0];
+
+    // 初始化已上传文件列表
+    updateFileList();
+    updateSubmitButton();
 </script>
 </body>
-</html> 
+</html>
